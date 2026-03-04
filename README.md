@@ -1,6 +1,6 @@
-# KeepCheats
+# KeepTrack
 
-KeepCheats是一个用于生成自定义跑步运动轨迹数据（FIT格式）的 Windows 图形界面工具。生成的 `.fit` 文件可以导入到各种运动平台。
+KeepTrack是一个用于生成自定义跑步运动轨迹数据（FIT格式）的 Windows 图形界面工具。生成的 `.fit` 文件可以导入到各种运动平台。
 
 **声明：本项目仅供学习交流使用喵~ 请勿用于任何商业用途或破坏平台公平性的行为。使用本工具产生的任何后果由使用者自行承担喵~**
 
@@ -16,8 +16,8 @@ KeepCheats是一个用于生成自定义跑步运动轨迹数据（FIT格式）�
 
 1. **克隆项目到本地**
    ```bash
-   git clone https://github.com/IAMAI-Dev/KeepCheats.git
-   cd KeepCheats/code
+    git clone https://github.com/IAMAI-Dev/KeepTrack.git
+    cd KeepTrack/code
    ```
 
 2. **安装依赖**
@@ -44,7 +44,7 @@ KeepCheats是一个用于生成自定义跑步运动轨迹数据（FIT格式）�
 - 项目代码中默认使用的操场坐标可能与您的实际位置不符，如有需要可以在界面中自行修改经纬度。
 - 本项目的附赠文档里已经提供了一些学校操场的经纬度以及方位角（方位角是指跑道长轴与经线指北方向按顺时针旋转的夹角），若有其他学校操场需要请在谷歌地球上查阅
   查阅后确认无误也可上传至作者的github仓库，成为这个项目的贡献者:)
-  Github：https://github.com/IAMAI-Dev/KeepCheats.git
+  Github：https://github.com/IAMAI-Dev/KeepTrack.git
 - FIT 文件的生成依赖于 `fit-tool` 库构建 Garmin 协议标准的数据包。
 
 ## 📄 许可证

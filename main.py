@@ -30,7 +30,7 @@ class FITGeneratorGUI:
     def __init__(self, root: tk.Tk):
         # 初始化主窗口
         self.root = root
-        self.root.title(f"KeepCheats v{VERSION}")
+        self.root.title(f"KeepTrack v{VERSION}")
         self.root.geometry("720x950")
         self.root.minsize(800, 1000)
 
@@ -108,7 +108,7 @@ class FITGeneratorGUI:
         title_frame.pack_propagate(False)
         tk.Label(
             title_frame,
-            text=f"KeepCheats v{VERSION}",
+            text=f"KeepTrack v{VERSION}",
             font=("Microsoft YaHei UI", 22, "bold"),  # 在这里设置标题字体
             bg="green",
             fg="white",
@@ -320,7 +320,7 @@ class FITGeneratorGUI:
     def _track_point(progress: float, total_laps: float, center_lat: float, center_lon: float, seed: int, playgroud_angle_deg: float):
         # 根据多个我自己实际跑步轨迹数据得出“直道稳、弯道飘、整体低频漂移”的轨迹点
         # 更加符合真实跑步轨迹
-        point_seed = seed + int(progress * 1_000_000)
+        point_seed = seed + int(progress * 1000000)
         rng = random.Random(point_seed)
 
         theta = math.radians(-playgroud_angle_deg)
@@ -374,8 +374,8 @@ class FITGeneratorGUI:
         x_rot = final_x * math.cos(theta) - final_y * math.sin(theta)
         y_rot = final_x * math.sin(theta) + final_y * math.cos(theta)
 
-        lat = center_lat + (y_rot / 111_000.0)
-        lon = center_lon + (x_rot / (111_000.0 * max(math.cos(math.radians(center_lat)), 1e-6)))
+        lat = center_lat + (y_rot / 111000.0)
+        lon = center_lon + (x_rot / (111000.0 * max(math.cos(math.radians(center_lat)), 1e-6)))
         return lat, lon
 
 
@@ -477,7 +477,7 @@ class FITGeneratorGUI:
         file_id.type = FileType.ACTIVITY
         file_id.manufacturer = Manufacturer.GARMIN.value
         file_id.product = 3589
-        file_id.serial_number = random.randint(3_000_000_000, 4_000_000_000)
+        file_id.serial_number = random.randint(3000000000, 4000000000)
         file_id.time_created = start_ts
         builder.add(file_id)
 
@@ -489,7 +489,7 @@ class FITGeneratorGUI:
 
         track_len = 400.0
         laps = this_dist_m / track_len
-        seed = random.randint(1, 999_999)
+        seed = random.randint(1, 999999)
 
         num_points = max(10, int(this_dur_sec / 2))
 
