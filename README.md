@@ -16,7 +16,7 @@ KeepTrack是一个用于生成自定义跑步运动轨迹数据（FIT格式）�
 
 1. **克隆项目到本地**
    ```bash
-    git clone https://gitee.com/iiamaii/KeepTrack.git
+    git clone https://github.com/IAMAI-Dev/KeepTrack.git
     cd KeepTrack/code
    ```
 
@@ -44,8 +44,8 @@ KeepTrack是一个用于生成自定义跑步运动轨迹数据（FIT格式）�
 - 项目代码中默认使用的操场坐标可能与您的实际位置不符，如有需要可以在界面中自行修改经纬度。
 
 - 本项目的附赠文档里已经提供了一些学校操场的经纬度以及方位角（方位角是指跑道长轴与经线指北方向按顺时针旋转的夹角），若有其他学校操场需要请在谷歌地球上查阅
-  查阅后确认无误也可上传至作者的Github和Gitee仓库，成为这个项目的贡献者:)
-  Github：https://github.com/IAMAI-Dev/KeepTrack.git  （暂时不可用o(╥﹏╥)o）
+  查阅后确认无误也可上传至作者的Github和Gitee仓库，成为这个项目的贡献者 : )
+  Github：https://github.com/IAMAI-Dev/KeepTrack.git
   
   Gitee：https://gitee.com/iiamaii/KeepTrack.git
   
