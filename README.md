@@ -43,7 +43,7 @@ KeepTrack是一个用于生成自定义跑步运动轨迹数据（FIT格式）�
 
 5. 点击“生成 FIT 运动数据”按钮，等待生成完成。
 
-6. 导入效果：![004A32B9455DEBFEA33F74ECAE322FD7](/home/yrl/004A32B9455DEBFEA33F74ECAE322FD7.jpg)
+6. 导入效果：![result](./assets/Track_Result.jpg)
 
    
 
