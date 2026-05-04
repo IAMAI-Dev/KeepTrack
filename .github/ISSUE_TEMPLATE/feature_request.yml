@@ -1,0 +1,65 @@
+name: 功能建议
+description: 提交改进想法、新功能或体验优化建议
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢你的建议。请尽量把需求写具体，
+        这样更方便讨论实现方式。
+  - type: dropdown
+    id: area
+    attributes:
+      label: 影响范围
+      description: 这个建议主要影响哪个部分？
+      options:
+        - 界面
+        - 数据生成
+        - 操场数据
+        - 文档
+        - 其他
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: 你的建议
+      description: 请直接描述你想增加或改进的内容
+      placeholder: 例如增加自动保存生成路径的选项
+    validations:
+      required: true
+  - type: textarea
+    id: reason
+    attributes:
+      label: 为什么需要这个改动
+      description: 请说明这个功能能解决什么问题
+      placeholder: 例如可以减少每次重复选择路径的操作
+    validations:
+      required: true
+  - type: textarea
+    id: alternative
+    attributes:
+      label: 你考虑过的其他方案
+      description: 如果你试过替代做法，也可以写在这里
+      placeholder: 例如通过配置文件保存默认参数
+    validations:
+      required: false
+  - type: textarea
+    id: effect
+    attributes:
+      label: 预期收益或影响
+      description: 这个改动完成后，希望得到什么效果
+      placeholder: 例如让批量生成流程更顺手
+    validations:
+      required: false
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: 提交前确认
+      options:
+        - label: 我已经搜索过现有 issue，确认未重复
+          required: true
+        - label: 我接受这个建议可能需要后续讨论
+          required: true

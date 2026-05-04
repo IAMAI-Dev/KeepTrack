@@ -1,0 +1,84 @@
+name: Bug 反馈
+description: 提交程序错误、界面异常或数据问题
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢你的反馈。请尽量填写完整信息，
+        这样更容易定位和修复问题。
+  - type: dropdown
+    id: scenario
+    attributes:
+      label: 问题场景
+      description: 请选择问题主要发生的环节
+      options:
+        - 程序启动
+        - FIT 生成
+        - 操场数据
+        - 界面显示
+        - 其他
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: 版本号
+      description: 请填写你使用的项目版本或提交号
+      placeholder: 例如 v1.0.0 / 1048902
+    validations:
+      required: false
+  - type: input
+    id: system
+    attributes:
+      label: 操作系统
+      description: 例如 Windows 11、Windows 10
+      placeholder: Windows 11
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: 问题现象
+      description: 请描述你看到的实际表现
+      placeholder: 例如点击生成后程序无响应...
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      description: 请按顺序写出复现过程
+      placeholder: |
+        1. 打开程序
+        2. 输入...
+        3. 点击...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望结果
+      description: 你原本希望发生什么
+      placeholder: 点击后应成功生成 FIT 文件
+    validations:
+      required: true
+  - type: textarea
+    id: extra
+    attributes:
+      label: 其他信息
+      description: 日志、截图、报错文本或补充说明
+      placeholder: 你可以直接粘贴报错，或附上截图说明
+    validations:
+      required: false
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: 提交前确认
+      options:
+        - label: 我已经搜索过现有 issue，确认未重复
+          required: true
+        - label: 我已尽量提供完整的复现信息
+          required: true
