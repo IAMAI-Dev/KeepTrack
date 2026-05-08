@@ -95,10 +95,10 @@ ipython_config.py
 #Pipfile.lock
 
 # UV
-#   Similar to Pipfile.lock, it is generally recommended to include uv.lock in version control.
-#   This is especially recommended for binary packages to ensure reproducibility, and is more
-#   commonly ignored for libraries.
-#uv.lock
+#   KeepTrack 是桌面应用（非库分发），uv.lock 应纳入版本
+#   控制以确保可重复安装。下面的规则处于注释状态，
+#   表示不忽略 uv.lock（即将其纳入版本控制）。
+# uv.lock
 
 # poetry
 #   Similar to Pipfile.lock, it is generally recommended to include poetry.lock in version control.
