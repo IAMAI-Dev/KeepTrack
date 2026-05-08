@@ -23,12 +23,12 @@ KeepTrack是一个用于生成自定义跑步运动轨迹数据（FIT格式）�
 2. **安装依赖**
    建议使用 Python 3.8 或以上版本，然后安装所需的第三方库：
    ```bash
-   pip install -r requirements.txt
+   uv sync
    ```
 
 3. **运行程序**
    ```bash
-   python main.py
+   uv run main.py
    ```
 
 ## 📝 使用方法

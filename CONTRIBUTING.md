@@ -4,7 +4,7 @@
 项目协作方式，让每一次修改都更容易理解、审查和维护。
 
 KeepTrack 目前是一个基于 Python 和 Tkinter 的桌面工具，核心代码
-位于 `main.py`，依赖项记录在 `requirements.txt` 中。
+位于 `main.py`，依赖项记录在 `pyproject.toml` 中。
 
 ## 开始之前
 
@@ -13,13 +13,13 @@ KeepTrack 目前是一个基于 Python 和 Tkinter 的桌面工具，核心代�
 3. 安装依赖：
 
    ```bash
-   pip install -r requirements.txt
+   uv sync
    ```
 
 4. 运行项目：
 
    ```bash
-   python main.py
+   uv run main.py
    ```
 
 提交前请至少确认程序可以正常启动，并尽量覆盖你修改过的功能路径。
@@ -268,7 +268,7 @@ def _ui(self, fn, *args, **kwargs):
 
 - 不要提交本地生成的 FIT 文件、临时文件、缓存目录或虚拟环境。
 - `assets/` 目录用于项目展示和文档资源，不要放入无关截图。
-- 新增依赖时，请同步更新 `requirements.txt`，并说明引入原因。
+- 新增依赖时，请同步更新 `pyproject.toml`，并说明引入原因。
 
 ### 操场位置信息贡献
 
@@ -297,7 +297,7 @@ def _ui(self, fn, *args, **kwargs):
 2. 检查你修改过的输入项、按钮和生成流程。
 3. 如果修改了 FIT 生成逻辑，请生成一个测试文件并确认无异常。
 4. 如果修改了文档，请检查 Markdown 渲染是否正常。
-5. 如果新增依赖，请在干净环境中验证 `pip install -r requirements.txt`。
+5. 如果新增依赖，请在干净环境中验证 `uv sync`。
 
 如果未来添加测试，请优先使用 `pytest`，并将测试放在 `tests/`
 目录中。测试文件命名建议使用 `test_*.py`。
