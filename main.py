@@ -7,6 +7,15 @@ import tkinter as tk
 from datetime import datetime, timedelta
 from tkinter import filedialog, messagebox, ttk
 
+from playground_repository import (
+    PlaygroundRepository,
+    format_playground_label,
+)
+from preferences import (
+    get_default_playground,
+    set_default_playground,
+)
+
 from fit_tool.fit_file_builder import FitFileBuilder
 from fit_tool.profile.messages.activity_message import ActivityMessage
 from fit_tool.profile.messages.event_message import EventMessage
@@ -23,7 +32,7 @@ from fit_tool.profile.profile_type import (
     SubSport,
 )
 
-VERSION = "1.0.1"
+VERSION = "1.1.0"
 TRACK_STRAIGHT_LENGTH = 85.0
 TRACK_CURVE_RADIUS = 36.5
 MAX_TRACK_WIDTH = 8.0
@@ -44,12 +53,20 @@ class FITGeneratorGUI:
         self.run_duration = tk.StringVar(value="0")
         self.file_count = tk.StringVar(value="1")
         self.time_interval = tk.StringVar(value="24")
-        self.run_date = tk.StringVar(value=now.strftime("%Y-%m-%d"))
-        self.run_time = tk.StringVar(value=now.strftime("%H:%M"))
+        self.run_date = tk.StringVar(
+            value=now.strftime("%Y-%m-%d"),
+        )
+        self.run_time = tk.StringVar(
+            value=now.strftime("%H:%M"),
+        )
 
         # 默认位置为湖北大学（武昌校区）一号操场。
-        self.playground_lat = tk.StringVar(value="30.5800521")
-        self.playground_lon = tk.StringVar(value="114.3307788")
+        self.playground_lat = tk.StringVar(
+            value="30.5800521",
+        )
+        self.playground_lon = tk.StringVar(
+            value="114.3307788",
+        )
         self.playground_angle = tk.StringVar(value="62.5")
 
         self.file_output = tk.StringVar(
@@ -60,8 +77,23 @@ class FITGeneratorGUI:
             )
         )
 
+        # 操场数据仓库和操场列表。
+        self._repo = PlaygroundRepository()
+        self._playgrounds = self._repo.load()
+        self._playground_labels = [
+            format_playground_label(pg)
+            for pg in self._playgrounds
+        ]
+
         self._setup_styles()
         self._build_ui()
+        self._apply_default_playground()
+
+        # 启动时在后台静默刷新操场数据。
+        threading.Thread(
+            target=self._auto_refresh_on_startup,
+            daemon=True,
+        ).start()
 
     """UI 辅助方法"""
 
@@ -237,12 +269,68 @@ class FITGeneratorGUI:
         time_frame.pack(fill=tk.X, pady=(0, 20))
         time_frame.columnconfigure(1, weight=1)
 
+        # 操场选择下拉菜单。
+        ttk.Label(
+            time_frame,
+            text="操场选择:",
+        ).grid(row=0, column=0, sticky=tk.W, pady=12)
+
+        self.playground_combo = ttk.Combobox(
+            time_frame,
+            values=self._playground_labels,
+            state="normal",
+        )
+        self.playground_combo.grid(
+            row=0, column=1, sticky="ew", padx=15,
+        )
+        self.playground_combo.set("搜索或选择操场...")
+        self.playground_combo.bind(
+            "<<ComboboxSelected>>",
+            self._on_playground_selected,
+        )
+        self.playground_combo.bind(
+            "<KeyRelease>",
+            self._filter_playgrounds,
+        )
+
+        # 操场操作按钮行。
+        btn_box = tk.Frame(time_frame)
+        btn_box.grid(
+            row=1, column=1, sticky="w", padx=15, pady=(0, 5),
+        )
+        self._refresh_btn = ttk.Button(
+            btn_box,
+            text="刷新数据",
+            width=10,
+            command=self._refresh_playground_data,
+        )
+        self._refresh_btn.pack(side=tk.LEFT, padx=(0, 8))
+        ttk.Button(
+            btn_box,
+            text="设为默认",
+            width=10,
+            command=self._set_default_playground,
+        ).pack(side=tk.LEFT)
+
+        self._refresh_status = ttk.Label(
+            time_frame,
+            text="",
+            foreground="gray",
+            font=("Microsoft YaHei UI", 8),
+        )
+        self._refresh_status.grid(
+            row=1, column=0, sticky=tk.E, padx=(0, 5),
+        )
+
+        # 开始时间。
         ttk.Label(
             time_frame,
             text="开始时间:",
-        ).grid(row=0, column=0, sticky=tk.W, pady=12)
+        ).grid(row=2, column=0, sticky=tk.W, pady=12)
         date_box = tk.Frame(time_frame)
-        date_box.grid(row=0, column=1, sticky="ew", padx=15)
+        date_box.grid(
+            row=2, column=1, sticky="ew", padx=15,
+        )
         ttk.Entry(
             date_box,
             textvariable=self.run_date,
@@ -255,12 +343,15 @@ class FITGeneratorGUI:
             width=10,
         ).pack(side=tk.LEFT, fill=tk.X, expand=True)
 
+        # 经纬度。
         ttk.Label(
             time_frame,
             text="纬度 / 经度:",
-        ).grid(row=1, column=0, sticky=tk.W, pady=12)
+        ).grid(row=3, column=0, sticky=tk.W, pady=12)
         geo_box = tk.Frame(time_frame)
-        geo_box.grid(row=1, column=1, sticky="ew", padx=15)
+        geo_box.grid(
+            row=3, column=1, sticky="ew", padx=15,
+        )
         ttk.Entry(
             geo_box,
             textvariable=self.playground_lat,
@@ -271,20 +362,21 @@ class FITGeneratorGUI:
             textvariable=self.playground_lon,
         ).pack(side=tk.LEFT, fill=tk.X, expand=True)
 
+        # 跑道方位角。
         ttk.Label(
             time_frame,
             text="跑道方位角:",
-        ).grid(row=2, column=0, sticky=tk.W, pady=12)
+        ).grid(row=4, column=0, sticky=tk.W, pady=12)
         ttk.Entry(
             time_frame,
             textvariable=self.playground_angle,
-        ).grid(row=2, column=1, sticky="ew", padx=15)
+        ).grid(row=4, column=1, sticky="ew", padx=15)
         ttk.Label(
             time_frame,
             text="单位：°",
             foreground="green",
             font=("Microsoft YaHei UI", 9),
-        ).grid(row=2, column=2)
+        ).grid(row=4, column=2)
 
     def _build_output_frame(self, main_frame):
         output_frame = ttk.LabelFrame(
@@ -350,32 +442,194 @@ class FITGeneratorGUI:
             return
 
         if count > 1:
-            self.interval_label.grid(row=3, column=0, sticky=tk.W, pady=12)
-            self.interval_entry.grid(row=3, column=1, sticky="ew", padx=15)
+            self.interval_label.grid(
+                row=3, column=0, sticky=tk.W, pady=12,
+            )
+            self.interval_entry.grid(
+                row=3, column=1, sticky="ew", padx=15,
+            )
         else:
             self.interval_label.grid_remove()
             self.interval_entry.grid_remove()
 
     def _update_pace(self, *_):
         try:
-            distance_km = float(self.run_distance.get() or 0)
-            duration_min = float(self.run_duration.get() or 0)
+            distance_km = float(
+                self.run_distance.get() or 0
+            )
+            duration_min = float(
+                self.run_duration.get() or 0
+            )
         except ValueError:
-            self.pace_label.config(text="配速: --'--\"/km")
+            self.pace_label.config(
+                text="配速: --'--\"/km",
+            )
             return
 
         if distance_km <= 0 or duration_min <= 0:
-            self.pace_label.config(text="配速: --'--\"/km")
+            self.pace_label.config(
+                text="配速: --'--\"/km",
+            )
             return
 
         pace = (duration_min * 60) / distance_km
-        pace_text = f"配速: {int(pace // 60)}'{int(pace % 60):02d}\"/km"
+        pace_text = (
+            f"配速: {int(pace // 60)}'"
+            f"{int(pace % 60):02d}\"/km"
+        )
         self.pace_label.config(text=pace_text)
 
     def _choose_output(self):
         folder = filedialog.askdirectory()
         if folder:
             self.file_output.set(folder)
+
+    """操场选择相关回调"""
+
+    def _on_playground_selected(self, _event):
+        """用户从下拉菜单选择操场后自动填充坐标。"""
+        selected = self.playground_combo.get()
+        for pg in self._playgrounds:
+            if format_playground_label(pg) == selected:
+                self.playground_lat.set(
+                    str(pg["latitude"]),
+                )
+                self.playground_lon.set(
+                    str(pg["longitude"]),
+                )
+                self.playground_angle.set(
+                    str(pg["angle"]),
+                )
+                break
+
+    def _filter_playgrounds(self, _event):
+        """根据用户输入关键词过滤下拉列表。"""
+        keyword = self.playground_combo.get().strip()
+        if not keyword:
+            self.playground_combo["values"] = (
+                self._playground_labels
+            )
+            return
+
+        filtered = [
+            label
+            for label in self._playground_labels
+            if keyword.lower() in label.lower()
+        ]
+        self.playground_combo["values"] = filtered
+
+    def _refresh_playground_data(self):
+        """在后台线程中从远程拉取最新操场数据。"""
+        self._refresh_btn.config(state="disabled")
+        self._ui(
+            self._refresh_status.config,
+            text="正在刷新...",
+            foreground="gray",
+        )
+
+        def _do_refresh():
+            try:
+                data = self._repo.refresh()
+                self._playgrounds = data
+                self._playground_labels = [
+                    format_playground_label(pg)
+                    for pg in data
+                ]
+                self._ui(
+                    self._update_combo_values,
+                )
+                self._ui(
+                    self._refresh_status.config,
+                    text="刷新成功",
+                    foreground="green",
+                )
+                self._ui(
+                    self.log,
+                    f"操场数据已更新，共 {len(data)} 条。",
+                )
+            except Exception as err:
+                self._ui(
+                    self._refresh_status.config,
+                    text="刷新失败",
+                    foreground="red",
+                )
+                self._ui(
+                    self.log,
+                    f"刷新操场数据失败: {err}",
+                )
+            finally:
+                self._ui(
+                    self._refresh_btn.config,
+                    state="normal",
+                )
+
+        threading.Thread(
+            target=_do_refresh,
+            daemon=True,
+        ).start()
+
+    def _set_default_playground(self):
+        """将当前选中的操场保存为用户默认操场。"""
+        selected = self.playground_combo.get()
+        for pg in self._playgrounds:
+            if format_playground_label(pg) == selected:
+                set_default_playground(pg)
+                self._ui(
+                    self.log,
+                    f"已设为默认操场: {selected}",
+                )
+                return
+
+        messagebox.showwarning(
+            "提示",
+            "请先从下拉菜单中选择一个操场。",
+        )
+
+    def _apply_default_playground(self):
+        """加载并应用用户的默认操场设置。"""
+        default_pg = get_default_playground()
+        if default_pg is None:
+            return
+
+        label = format_playground_label(default_pg)
+        self.playground_combo.set(label)
+        self.playground_lat.set(
+            str(default_pg["latitude"]),
+        )
+        self.playground_lon.set(
+            str(default_pg["longitude"]),
+        )
+        self.playground_angle.set(
+            str(default_pg["angle"]),
+        )
+
+    def _update_combo_values(self):
+        """刷新下拉菜单的可选值列表。"""
+        self.playground_combo["values"] = (
+            self._playground_labels
+        )
+
+    def _auto_refresh_on_startup(self):
+        """启动时在后台静默拉取最新操场数据。
+
+        失败时不打扰用户，仅在日志中记录。
+        """
+        try:
+            data = self._repo.refresh()
+            self._playgrounds = data
+            self._playground_labels = [
+                format_playground_label(pg)
+                for pg in data
+            ]
+            self._ui(self._update_combo_values)
+            self._ui(
+                self._refresh_status.config,
+                text="数据已同步",
+                foreground="green",
+            )
+        except Exception:
+            # 启动时网络不可用属于正常情况，不提示用户。
+            pass
 
     """数据生成算法"""
 

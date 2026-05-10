@@ -1,0 +1,53 @@
+{
+    "version": 1,
+    "playgrounds": [
+        {
+            "school": "湖北大学",
+            "campus": "武昌校区",
+            "name": "一号运动场",
+            "latitude": 30.5800521,
+            "longitude": 114.3307788,
+            "angle": 62.5
+        },
+        {
+            "school": "湖北大学",
+            "campus": "武昌校区",
+            "name": "二号运动场（已封闭）",
+            "latitude": 30.5826038,
+            "longitude": 114.3310664,
+            "angle": 0
+        },
+        {
+            "school": "湖北大学",
+            "campus": "阳逻校区",
+            "name": "唯一运动场",
+            "latitude": 30.6464622,
+            "longitude": 114.5764778,
+            "angle": -30
+        },
+        {
+            "school": "广东药科大学",
+            "campus": "大学城校区",
+            "name": "唯一运动场",
+            "latitude": 23.0580840,
+            "longitude": 113.4028471,
+            "angle": 0
+        },
+        {
+            "school": "山东大学",
+            "campus": "兴隆山校区",
+            "name": "唯一运动场",
+            "latitude": 36.59728,
+            "longitude": 117.04467,
+            "angle": 0
+        },
+        {
+            "school": "天津大学",
+            "campus": "北洋园校区",
+            "name": "唯一运动场",
+            "latitude": 39.001439,
+            "longitude": 117.314831,
+            "angle": 0
+        }
+    ]
+}

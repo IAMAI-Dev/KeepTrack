@@ -209,3 +209,6 @@ __marimo__/
 # KeepTrack Generated Data
 *.fit
 Keep运动数据/
+
+# KeepTrack 本地用户数据（缓存和偏好）
+.keeptrack/
