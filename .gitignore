@@ -8,6 +8,7 @@ __pycache__/
 
 # Distribution / packaging
 .Python
+.obsidian/
 build/
 develop-eggs/
 dist/
