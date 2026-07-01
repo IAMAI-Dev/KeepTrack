@@ -53,6 +53,13 @@ class FITGeneratorGUI:
         self.run_duration = tk.StringVar(value="0")
         self.file_count = tk.StringVar(value="1")
         self.time_interval = tk.StringVar(value="24")
+        # 每周跑的天数 (0=周一, 6=周日)
+        self.run_days = {
+            i: tk.BooleanVar(value=False) for i in range(7)
+        }
+        # 距离和时长的误差范围
+        self.dist_error = tk.StringVar(value="0.0")
+        self.dur_error = tk.StringVar(value="0")
         self.run_date = tk.StringVar(
             value=now.strftime("%Y-%m-%d"),
         )
@@ -260,6 +267,46 @@ class FITGeneratorGUI:
         )
         self.file_count.trace_add("write", self._update_interval_visibility)
 
+        # 每周跑的天数选择。
+        self.run_days_label = ttk.Label(
+            basic_frame,
+            text="每周跑的天数:",
+        )
+        self.run_days_frame = tk.Frame(basic_frame)
+        day_names = ["一", "二", "三", "四", "五", "六", "日"]
+        self.run_day_cbs = {}
+        for i, name in enumerate(day_names):
+            cb = ttk.Checkbutton(
+                self.run_days_frame,
+                text=name,
+                variable=self.run_days[i],
+            )
+            cb.pack(side=tk.LEFT, padx=2)
+            self.run_day_cbs[i] = cb
+
+        # 距离和时长的误差范围。
+        self.error_label = ttk.Label(
+            basic_frame,
+            text="距离误差 (±km):",
+        )
+        self.error_dist_entry = ttk.Entry(
+            basic_frame,
+            textvariable=self.dist_error,
+            width=8,
+        )
+        self.error_dur_label = ttk.Label(
+            basic_frame,
+            text="时长误差 (±min):",
+        )
+        self.error_dur_entry = ttk.Entry(
+            basic_frame,
+            textvariable=self.dur_error,
+            width=8,
+        )
+
+        self.file_count.trace_add("write", self._update_advanced_visibility)
+        self._update_advanced_visibility()
+
     def _build_time_frame(self, main_frame):
         time_frame = ttk.LabelFrame(
             main_frame,
@@ -451,6 +498,43 @@ class FITGeneratorGUI:
         else:
             self.interval_label.grid_remove()
             self.interval_entry.grid_remove()
+
+    def _update_advanced_visibility(self, *_):
+        """当生成份数 > 1 时显示批量生成高级选项。"""
+        try:
+            count = int(self.file_count.get() or 0)
+        except ValueError:
+            count = 0
+
+        if count > 1:
+            # 每周跑的天数。
+            self.run_days_label.grid(
+                row=4, column=0, sticky=tk.W, pady=12,
+            )
+            self.run_days_frame.grid(
+                row=4, column=1, sticky="ew", padx=15, columnspan=2,
+            )
+            # 距离误差。
+            self.error_label.grid(
+                row=5, column=0, sticky=tk.W, pady=12,
+            )
+            self.error_dist_entry.grid(
+                row=5, column=1, sticky="w", padx=15,
+            )
+            # 时长误差。
+            self.error_dur_label.grid(
+                row=5, column=1, sticky="e", padx=(0, 100),
+            )
+            self.error_dur_entry.grid(
+                row=5, column=2, sticky="w",
+            )
+        else:
+            self.run_days_label.grid_remove()
+            self.run_days_frame.grid_remove()
+            self.error_label.grid_remove()
+            self.error_dist_entry.grid_remove()
+            self.error_dur_label.grid_remove()
+            self.error_dur_entry.grid_remove()
 
     def _update_pace(self, *_):
         try:
@@ -749,12 +833,21 @@ class FITGeneratorGUI:
             )
             out_dir = self.file_output.get().strip()
 
+            # 读取批量生成高级选项。
+            selected_days = sorted(
+                i for i in range(7) if self.run_days[i].get()
+            )
+            dist_error = float(self.dist_error.get() or 0)
+            dur_error = float(self.dur_error.get() or 0)
+
             if dist_km <= 0 or dur_min <= 0:
                 raise ValueError("距离和时长必须大于 0")
             if count <= 0:
                 raise ValueError("生成份数必须大于 0")
             if interval_hours < 0:
                 raise ValueError("生成间隔不能为负数")
+            if dist_error < 0 or dur_error < 0:
+                raise ValueError("误差范围不能为负数")
             if not out_dir:
                 raise ValueError("输出目录不能为空")
         except ValueError as error:
@@ -762,15 +855,21 @@ class FITGeneratorGUI:
             return
 
         os.makedirs(out_dir, exist_ok=True)
-        base_params = self._calculate_base_params(dist_km, dur_min)
 
         self._set_button(False, "生成中...")
         self._set_progress(0)
-        self.log(
-            "基准参数: "
-            f"心率~{base_params['hr_base']} | "
-            f"步频~{base_params['cadence_base']}"
-        )
+
+        if selected_days:
+            day_names = ["一", "二", "三", "四", "五", "六", "日"]
+            days_str = " ".join(day_names[d] for d in selected_days)
+            self.log(
+                f"每周跑 {len(selected_days)} 天 ({days_str})，"
+                f"共生成 {count} 份数据"
+            )
+        if dist_error > 0 or dur_error > 0:
+            self.log(
+                f"误差范围: 距离±{dist_error}km, 时长±{dur_error}min"
+            )
 
         generation_thread = threading.Thread(
             target=self._run_task,
@@ -785,7 +884,9 @@ class FITGeneratorGUI:
                 lon,
                 playground_angle,
                 out_dir,
-                base_params,
+                selected_days,
+                dist_error,
+                dur_error,
             ),
         )
         generation_thread.start()
@@ -801,21 +902,63 @@ class FITGeneratorGUI:
         lon,
         playground_angle,
         out_dir,
-        base_params,
+        selected_days,
+        dist_error,
+        dur_error,
     ):
+        def _next_run_date(current_dt, selected_days):
+            """计算从 current_dt 之后最近的一个符合选中星期的日期。
+
+            如果 current_dt 本身落在选中的某一天，直接返回它；
+            否则向后搜索最多 7 天，返回第一个匹配的日期。
+            """
+            if current_dt.weekday() in selected_days:
+                return current_dt
+            for offset in range(1, 8):
+                candidate = current_dt + timedelta(days=offset)
+                if candidate.weekday() in selected_days:
+                    return candidate
+            # 兜底：理论上不会到这里。
+            return current_dt + timedelta(days=1)
+
+        # 如果用户选择了每周跑的天数，则首条记录也需对齐到选中日期。
+        use_day_schedule = len(selected_days) > 0
+
         try:
             current_start_dt = start_dt
+            if use_day_schedule:
+                current_start_dt = _next_run_date(
+                    current_start_dt, selected_days
+                )
+
             for index in range(count):
+                # 对每条记录在误差范围内随机微调距离 / 时长。
+                actual_dist = dist_km
+                actual_dur = dur_min
+                if dist_error > 0:
+                    actual_dist += random.uniform(-dist_error, dist_error)
+                    actual_dist = max(0.01, actual_dist)
+                if dur_error > 0:
+                    actual_dur += random.uniform(-dur_error, dur_error)
+                    actual_dur = max(1, actual_dur)
+
+                # 每条记录独立计算基准参数（因为距离/时长可能不同）。
+                base_params = self._calculate_base_params(
+                    actual_dist, actual_dur
+                )
+
                 start_text = current_start_dt.strftime("%m-%d %H:%M")
                 self._ui(
                     self.log,
                     f"正在生成第 {index + 1}/{count} 个文件 "
-                    f"(开始时间: {start_text})...",
+                    f"(开始时间: {start_text}, "
+                    f"距离: {actual_dist:.2f}km, "
+                    f"时长: {actual_dur:.0f}min)...",
                 )
                 self._generate_fit_file(
                     index=index,
-                    dist_km=dist_km,
-                    dur_min=dur_min,
+                    dist_km=actual_dist,
+                    dur_min=actual_dur,
                     start_time=current_start_dt,
                     lat_center=lat,
                     lon_center=lon,
@@ -824,7 +967,15 @@ class FITGeneratorGUI:
                     params=base_params,
                 )
                 self._ui(self._set_progress, ((index + 1) / count) * 100)
-                current_start_dt += timedelta(hours=interval_hours)
+
+                # 计算下一条记录的起始时间。
+                if use_day_schedule:
+                    current_start_dt = _next_run_date(
+                        current_start_dt + timedelta(days=1),
+                        selected_days,
+                    )
+                else:
+                    current_start_dt += timedelta(hours=interval_hours)
 
             self._ui(messagebox.showinfo, "成功", f"生成完毕！\n路径: {out_dir}")
             self._ui(self.log, "所有任务完成。")
