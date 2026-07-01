@@ -760,6 +760,10 @@ class FITGeneratorGUI:
             )
             dist_error = float(self.dist_error.get() or 0)
             dur_error = float(self.dur_error.get() or 0)
+            if count <= 1:
+                selected_days = []
+                dist_error = 0.0
+                dur_error = 0.0
 
             if dist_km <= 0 or dur_min <= 0:
                 raise ValueError("距离和时长必须大于 0")
