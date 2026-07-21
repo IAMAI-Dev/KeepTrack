@@ -18,7 +18,7 @@ KeepTrack是一个用于生成自定义跑步运动轨迹数据（FIT格式）�
 1. **克隆项目到本地**
    ```bash
     git clone https://github.com/IAMAI-Dev/KeepTrack.git
-    cd KeepTrack/code
+    cd KeepTrack
    ```
 
 2. **安装依赖**
