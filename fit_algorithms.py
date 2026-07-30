@@ -28,14 +28,73 @@ def next_run_date(current_dt: datetime, selected_days: list) -> datetime:
     Returns:
         下一个符合选中星期的日期时间。
     """
+    if not selected_days:
+        return current_dt + timedelta(days=1)
     if current_dt.weekday() in selected_days:
         return current_dt
     for offset in range(1, 8):
         candidate = current_dt + timedelta(days=offset)
         if candidate.weekday() in selected_days:
             return candidate
-    # 兜底：理论上不会到这里（7 天内必定找到匹配或回到同一天）。
+    # 非空星期列表在 7 天内必定匹配；此分支仅作防御性兜底。
     return current_dt + timedelta(days=1)
+
+
+# ---- 批量生成选项 / 时间推进 ----
+
+def normalize_advanced_options(
+    count: int,
+    selected_days,
+    dist_error_value,
+    dur_error_value,
+):
+    """规范化仅在批量生成时启用的高级选项。
+
+    count <= 1 时直接返回默认值，不解析隐藏输入框中的内容。
+    """
+    if count <= 1:
+        return [], 0.0, 0.0
+
+    dist_error = float(dist_error_value or 0)
+    dur_error = float(dur_error_value or 0)
+    if dist_error < 0 or dur_error < 0:
+        raise ValueError("误差范围不能为负数")
+
+    return sorted(selected_days), dist_error, dur_error
+
+
+def resolve_advanced_options(
+    count: int,
+    selected_days_getter,
+    dist_error_getter,
+    dur_error_getter,
+):
+    """按生成份数决定是否读取高级选项。
+
+    getter 由调用方提供，使单条模式可以在源头跳过隐藏控件读取。
+    """
+    if count <= 1:
+        return [], 0.0, 0.0
+    return normalize_advanced_options(
+        count,
+        selected_days_getter(),
+        dist_error_getter(),
+        dur_error_getter(),
+    )
+
+
+def advance_run_date(
+    current_dt: datetime,
+    selected_days,
+    interval_hours: float,
+) -> datetime:
+    """按星期调度或固定小时间隔计算下一条记录时间。"""
+    if selected_days:
+        return next_run_date(
+            current_dt + timedelta(days=1),
+            selected_days,
+        )
+    return current_dt + timedelta(hours=interval_hours)
 
 
 # ---- 配速 → 心率 / 步频 参数映射 ----
@@ -66,6 +125,44 @@ def calculate_base_params(dist_km: float, dur_min: float) -> dict:
         heart_rate = random.randint(120, 130)
 
     return {"hr_base": heart_rate, "cadence_base": cadence}
+
+
+def prepare_run_variant(
+    dist_km: float,
+    dur_min: float,
+    dist_error: float,
+    dur_error: float,
+    batch_base_params=None,
+    rng=None,
+):
+    """生成单条记录的距离、时长和心率/步频基准。
+
+    零误差时复用整批参数，保持旧版本行为；启用误差时则按每条记录
+    的实际距离和时长重新计算参数。
+    """
+    rng = rng or random
+
+    actual_dist = dist_km
+    actual_dur = dur_min
+    if dist_error > 0:
+        actual_dist = max(
+            0.01,
+            dist_km + rng.uniform(-dist_error, dist_error),
+        )
+    if dur_error > 0:
+        actual_dur = max(
+            1,
+            dur_min + rng.uniform(-dur_error, dur_error),
+        )
+
+    if dist_error == 0 and dur_error == 0:
+        params = batch_base_params
+        if params is None:
+            params = calculate_base_params(dist_km, dur_min)
+    else:
+        params = calculate_base_params(actual_dist, actual_dur)
+
+    return actual_dist, actual_dur, params
 
 
 # ---- 操场绕圈轨迹点 ----
