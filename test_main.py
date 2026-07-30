@@ -15,8 +15,12 @@ from datetime import datetime, timedelta
 
 from fit_algorithms import (
     EARTH_METERS_PER_DEGREE,
+    advance_run_date,
     calculate_base_params,
     next_run_date,
+    normalize_advanced_options,
+    prepare_run_variant,
+    resolve_advanced_options,
     track_point,
 )
 
@@ -231,10 +235,11 @@ class TestErrorRangeRandomization(unittest.TestCase):
         """距离在误差范围内的随机化不超出边界。"""
         base_dist = 5.0
         dist_error = 0.3
-        random.seed(42)
+        rng = random.Random(42)
         for _ in range(100):
-            actual = base_dist + random.uniform(-dist_error, dist_error)
-            actual = max(0.01, actual)
+            actual, _, _ = prepare_run_variant(
+                base_dist, 30.0, dist_error, 0.0, rng=rng,
+            )
             self.assertGreaterEqual(actual, base_dist - dist_error)
             self.assertLessEqual(actual, base_dist + dist_error)
             self.assertGreaterEqual(actual, 0.01)
@@ -243,45 +248,50 @@ class TestErrorRangeRandomization(unittest.TestCase):
         """时长在误差范围内的随机化不超出边界。"""
         base_dur = 30.0
         dur_error = 5.0
-        random.seed(123)
+        rng = random.Random(123)
         for _ in range(100):
-            actual = base_dur + random.uniform(-dur_error, dur_error)
-            actual = max(1, actual)
+            _, actual, _ = prepare_run_variant(
+                5.0, base_dur, 0.0, dur_error, rng=rng,
+            )
             self.assertGreaterEqual(actual, base_dur - dur_error)
             self.assertLessEqual(actual, base_dur + dur_error)
             self.assertGreaterEqual(actual, 1)
 
     def test_zero_error_means_exact_value(self):
-        """误差为 0 时距离/时长应保持不变。"""
-        base_dist = 5.0
-        dist_error = 0.0
-        actual = base_dist + random.uniform(-dist_error, dist_error)
-        self.assertEqual(actual, base_dist)
+        """误差为 0 时距离/时长不变并复用整批参数。"""
+        batch_params = {"hr_base": 150, "cadence_base": 175}
+        variants = [
+            prepare_run_variant(
+                5.0, 30.0, 0.0, 0.0, batch_params,
+                rng=random.Random(seed),
+            )
+            for seed in range(5)
+        ]
+        for actual_dist, actual_dur, params in variants:
+            self.assertEqual(actual_dist, 5.0)
+            self.assertEqual(actual_dur, 30.0)
+            self.assertIs(params, batch_params)
 
     def test_large_error_bounded_by_minimum(self):
         """大误差不应使距离/时长低于最小值。"""
-        base_dist = 0.5
-        dist_error = 2.0  # 误差比基准还大
-        random.seed(99)
+        rng = random.Random(99)
         for _ in range(100):
-            actual = base_dist + random.uniform(-dist_error, dist_error)
-            actual = max(0.01, actual)
-            self.assertGreaterEqual(actual, 0.01)
-
-        base_dur = 3.0
-        dur_error = 10.0
-        for _ in range(100):
-            actual = base_dur + random.uniform(-dur_error, dur_error)
-            actual = max(1, actual)
-            self.assertGreaterEqual(actual, 1)
+            actual_dist, actual_dur, _ = prepare_run_variant(
+                0.5, 3.0, 2.0, 10.0, rng=rng,
+            )
+            self.assertGreaterEqual(actual_dist, 0.01)
+            self.assertGreaterEqual(actual_dur, 1)
 
     def test_error_range_distribution_is_uniform_approx(self):
         """采样足够多的点，中位数应接近基准值。"""
         base = 5.0
         error = 1.0
-        random.seed(7)
+        rng = random.Random(7)
         samples = [
-            base + random.uniform(-error, error) for _ in range(1000)
+            prepare_run_variant(
+                base, 30.0, error, 0.0, rng=rng,
+            )[0]
+            for _ in range(1000)
         ]
         median = sorted(samples)[500]
         self.assertAlmostEqual(median, base, delta=error * 0.2)
@@ -294,37 +304,48 @@ class TestErrorRangeRandomization(unittest.TestCase):
 class TestBackwardCompatibility(unittest.TestCase):
     """验证未启用新功能时行为和原来一致。"""
 
-    def test_no_days_selected_uses_interval_mode(self):
-        """不勾选任何星期时，use_day_schedule 应为 False。"""
-        selected_days = []
-        use_day_schedule = len(selected_days) > 0
-        self.assertFalse(use_day_schedule)
+    def test_single_count_ignores_hidden_invalid_values(self):
+        """单条生成完全不读取隐藏的高级选项。"""
+        def fail_if_called():
+            raise AssertionError("hidden option getter must not be called")
 
-    def test_selected_days_activates_schedule_mode(self):
-        """勾选星期后 use_day_schedule 应为 True。"""
-        selected_days = [0, 1, 2, 3]  # 一二三四
-        use_day_schedule = len(selected_days) > 0
-        self.assertTrue(use_day_schedule)
+        result = resolve_advanced_options(
+            1,
+            fail_if_called,
+            fail_if_called,
+            fail_if_called,
+        )
+        self.assertEqual(result, ([], 0.0, 0.0))
 
-    def test_day_schedule_mode_handles_count_1(self):
-        """生成 1 份时即使选了天数也只产生一条记录。"""
-        selected_days = [0, 2, 4]  # 一三五
-        start_dt = datetime(2026, 7, 1, 8, 0)  # 周三 → 匹配
-        start_dt = next_run_date(start_dt, selected_days)
-        self.assertEqual(start_dt.weekday(), 2)
-        # 只生成 1 条
-        count = 1
-        generated = sum(1 for _ in range(count))
-        self.assertEqual(generated, 1)
+    def test_batch_count_parses_advanced_values(self):
+        """批量生成会读取、排序并校验高级选项。"""
+        result = resolve_advanced_options(
+            3,
+            lambda: [4, 0, 2],
+            lambda: "0.2",
+            lambda: "3",
+        )
+        self.assertEqual(result, ([0, 2, 4], 0.2, 3.0))
 
-    def test_default_values_are_zero(self):
-        """默认误差值应为 0（不影响基准距离/时长）。"""
-        dist_error = 0.0
-        dur_error = 0.0
-        base = 5.0
-        self.assertEqual(base + random.uniform(-dist_error, dist_error), base)
+    def test_batch_count_rejects_invalid_values(self):
+        """批量模式中的非法误差仍应明确报错。"""
+        with self.assertRaises(ValueError):
+            normalize_advanced_options(2, [], "invalid", "0")
+
+    def test_interval_mode_advances_by_hours(self):
+        """未选择星期时保持旧版固定小时间隔行为。"""
+        current = datetime(2026, 7, 1, 8, 0)
         self.assertEqual(
-            30.0 + random.uniform(-dur_error, dur_error), 30.0,
+            advance_run_date(current, [], 24),
+            datetime(2026, 7, 2, 8, 0),
+        )
+
+    def test_schedule_mode_advances_to_selected_day(self):
+        """选择星期时推进到下一个匹配日期。"""
+        current = datetime(2026, 7, 1, 8, 0)  # 周三
+        self.assertEqual(
+            advance_run_date(current, [0, 4], 24),
+            datetime(2026, 7, 3, 8, 0),  # 周五
         )
 
 
