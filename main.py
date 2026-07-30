@@ -4,7 +4,7 @@ import os
 import random
 import threading
 import tkinter as tk
-from datetime import datetime, timedelta
+from datetime import datetime
 from tkinter import filedialog, messagebox, ttk
 
 from playground_repository import (
@@ -16,9 +16,11 @@ from preferences import (
     set_default_playground,
 )
 from fit_algorithms import (
-    EARTH_METERS_PER_DEGREE,
+    advance_run_date,
     calculate_base_params,
     next_run_date,
+    prepare_run_variant,
+    resolve_advanced_options,
     track_point,
 )
 
@@ -525,10 +527,10 @@ class FITGeneratorGUI:
             )
             # 时长误差。
             self.error_dur_label.grid(
-                row=5, column=1, sticky="e", padx=(0, 100),
+                row=6, column=0, sticky=tk.W, pady=12,
             )
             self.error_dur_entry.grid(
-                row=5, column=2, sticky="w",
+                row=6, column=1, sticky="w", padx=15,
             )
         else:
             self.run_days_label.grid_remove()
@@ -754,16 +756,18 @@ class FITGeneratorGUI:
             )
             out_dir = self.file_output.get().strip()
 
-            # 读取批量生成高级选项。
-            selected_days = sorted(
-                i for i in range(7) if self.run_days[i].get()
+            # 仅在批量模式调用 getter；隐藏字段中的残留内容不会影响
+            # 单条生成。
+            selected_days, dist_error, dur_error = (
+                resolve_advanced_options(
+                    count,
+                    lambda: [
+                        i for i in range(7) if self.run_days[i].get()
+                    ],
+                    self.dist_error.get,
+                    self.dur_error.get,
+                )
             )
-            dist_error = float(self.dist_error.get() or 0)
-            dur_error = float(self.dur_error.get() or 0)
-            if count <= 1:
-                selected_days = []
-                dist_error = 0.0
-                dur_error = 0.0
 
             if dist_km <= 0 or dur_min <= 0:
                 raise ValueError("距离和时长必须大于 0")
@@ -771,8 +775,6 @@ class FITGeneratorGUI:
                 raise ValueError("生成份数必须大于 0")
             if interval_hours < 0:
                 raise ValueError("生成间隔不能为负数")
-            if dist_error < 0 or dur_error < 0:
-                raise ValueError("误差范围不能为负数")
             if not out_dir:
                 raise ValueError("输出目录不能为空")
         except ValueError as error:
@@ -841,20 +843,21 @@ class FITGeneratorGUI:
                     current_start_dt, selected_days
                 )
 
-            for index in range(count):
-                # 对每条记录在误差范围内随机微调距离 / 时长。
-                actual_dist = dist_km
-                actual_dur = dur_min
-                if dist_error > 0:
-                    actual_dist += random.uniform(-dist_error, dist_error)
-                    actual_dist = max(0.01, actual_dist)
-                if dur_error > 0:
-                    actual_dur += random.uniform(-dur_error, dur_error)
-                    actual_dur = max(1, actual_dur)
+            # 旧版本会为整批文件只计算一次参数。零误差时继续复用该
+            # 参数；启用误差后才为每条记录按实际距离/时长重新计算。
+            batch_base_params = None
+            if dist_error == 0 and dur_error == 0:
+                batch_base_params = self._calculate_base_params(
+                    dist_km, dur_min
+                )
 
-                # 每条记录独立计算基准参数（因为距离/时长可能不同）。
-                base_params = self._calculate_base_params(
-                    actual_dist, actual_dur
+            for index in range(count):
+                actual_dist, actual_dur, base_params = prepare_run_variant(
+                    dist_km,
+                    dur_min,
+                    dist_error,
+                    dur_error,
+                    batch_base_params,
                 )
 
                 start_text = current_start_dt.strftime("%m-%d %H:%M")
@@ -879,13 +882,11 @@ class FITGeneratorGUI:
                 self._ui(self._set_progress, ((index + 1) / count) * 100)
 
                 # 计算下一条记录的起始时间。
-                if use_day_schedule:
-                    current_start_dt = next_run_date(
-                        current_start_dt + timedelta(days=1),
-                        selected_days,
-                    )
-                else:
-                    current_start_dt += timedelta(hours=interval_hours)
+                current_start_dt = advance_run_date(
+                    current_start_dt,
+                    selected_days,
+                    interval_hours,
+                )
 
             self._ui(messagebox.showinfo, "成功", f"生成完毕！\n路径: {out_dir}")
             self._ui(self.log, "所有任务完成。")
