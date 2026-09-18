@@ -48,6 +48,14 @@
             "latitude": 39.001439,
             "longitude": 117.314831,
             "angle": 0
+        },
+        {
+            "school": "中南大学",
+            "campus": "校本部",
+            "name": "田径场",
+            "latitude": 28.1641274,
+            "longitude": 112.9332707,
+            "angle": 177.17
         }
     ]
 }
