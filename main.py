@@ -1495,8 +1495,9 @@ class FITGeneratorGUI:
 
                 if count <= 0:
                     raise ValueError("生成份数必须大于 0")
+if not math.isfinite(interval_hours):
+                    raise ValueError("生成间隔必须是有限数")
                 if interval_hours < 0:
-                    raise ValueError("生成间隔不能为负数")
 
                 tasks = self._build_interval_tasks(
                     dist_km=dist_km,
