@@ -25,6 +25,20 @@ from fit_algorithms import (
 )
 
 
+def _load_gui_class_for_workflow_test():
+    """在未安装 fit-tool 的环境中跳过 GUI 依赖，只测试生成编排逻辑。"""
+    try:
+        from main import FITGeneratorGUI
+    except ModuleNotFoundError as error:
+        if not error.name or not error.name.startswith("fit_tool"):
+            raise
+        return None
+    return FITGeneratorGUI
+
+
+FIT_GENERATOR_GUI = _load_gui_class_for_workflow_test()
+
+
 # ---------------------------------------------------------------------------
 # next_run_date
 # ---------------------------------------------------------------------------
@@ -332,6 +346,13 @@ class TestBackwardCompatibility(unittest.TestCase):
         with self.assertRaises(ValueError):
             normalize_advanced_options(2, [], "invalid", "0")
 
+    def test_batch_count_rejects_non_finite_values(self):
+        """批量模式中的 NaN/无穷误差不能进入生成流程。"""
+        for value in ("nan", "inf", "-inf"):
+            with self.subTest(value=value):
+                with self.assertRaises(ValueError):
+                    normalize_advanced_options(2, [], value, "0")
+
     def test_interval_mode_advances_by_hours(self):
         """未选择星期时保持旧版固定小时间隔行为。"""
         current = datetime(2026, 7, 1, 8, 0)
@@ -346,6 +367,52 @@ class TestBackwardCompatibility(unittest.TestCase):
         self.assertEqual(
             advance_run_date(current, [0, 4], 24),
             datetime(2026, 7, 3, 8, 0),  # 周五
+        )
+
+
+@unittest.skipIf(
+    FIT_GENERATOR_GUI is None,
+    "fit_tool 未安装，跳过依赖 GUI 模块导入的工作流测试",
+)
+class TestGenerationWorkflow(unittest.TestCase):
+    """验证 _run_task 真的使用批次参数并推进固定间隔。"""
+
+    def test_run_task_reuses_zero_error_batch_params(self):
+        generated = []
+        calculate_calls = []
+        batch_params = {"hr_base": 150, "cadence_base": 175}
+        gui = FIT_GENERATOR_GUI.__new__(FIT_GENERATOR_GUI)
+        gui._ui = lambda *args, **kwargs: None
+        gui._calculate_base_params = (
+            lambda dist_km, dur_min: calculate_calls.append(
+                (dist_km, dur_min)
+            ) or batch_params
+        )
+        gui._generate_fit_file = (
+            lambda **kwargs: generated.append(kwargs)
+        )
+
+        gui._run_task(
+            5.0,
+            30.0,
+            2,
+            24.0,
+            datetime(2026, 7, 1, 8, 0),
+            30.0,
+            114.0,
+            0.0,
+            "unused",
+            [],
+            0.0,
+            0.0,
+        )
+
+        self.assertEqual(calculate_calls, [(5.0, 30.0)])
+        self.assertEqual(len(generated), 2)
+        self.assertTrue(all(item["params"] is batch_params for item in generated))
+        self.assertEqual(
+            [item["start_time"] for item in generated],
+            [datetime(2026, 7, 1, 8, 0), datetime(2026, 7, 2, 8, 0)],
         )
 
 

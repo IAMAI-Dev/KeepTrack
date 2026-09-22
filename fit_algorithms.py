@@ -57,8 +57,13 @@ def normalize_advanced_options(
 
     dist_error = float(dist_error_value or 0)
     dur_error = float(dur_error_value or 0)
-    if dist_error < 0 or dur_error < 0:
-        raise ValueError("误差范围不能为负数")
+    if (
+        not math.isfinite(dist_error)
+        or not math.isfinite(dur_error)
+        or dist_error < 0
+        or dur_error < 0
+    ):
+        raise ValueError("误差范围必须是有限的非负数")
 
     return sorted(selected_days), dist_error, dur_error
 
