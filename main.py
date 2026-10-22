@@ -18,6 +18,14 @@ from preferences import (
     get_default_playground,
     set_default_playground,
 )
+from fit_algorithms import (
+    advance_run_date,
+    calculate_base_params,
+    next_run_date,
+    prepare_run_variant,
+    resolve_advanced_options,
+    track_point,
+)
 
 from fit_tool.fit_file_builder import FitFileBuilder
 from fit_tool.profile.messages.activity_message import ActivityMessage
@@ -35,11 +43,7 @@ from fit_tool.profile.profile_type import (
     SubSport,
 )
 
-VERSION = "1.1.0"
-TRACK_STRAIGHT_LENGTH = 85.0
-TRACK_CURVE_RADIUS = 36.5
-MAX_TRACK_WIDTH = 8.0
-EARTH_METERS_PER_DEGREE = 111000.0
+VERSION = "1.1.1"
 
 
 @dataclass
@@ -75,6 +79,13 @@ class FITGeneratorGUI:
         self.file_count = tk.StringVar(value="1")
         self.time_interval = tk.StringVar(value="24")
         self.batch_mode = tk.StringVar(value="interval")
+        # 每周跑的天数 (0=周一, 6=周日)
+        self.run_days = {
+            i: tk.BooleanVar(value=False) for i in range(7)
+        }
+        # 距离和时长的误差范围
+        self.dist_error = tk.StringVar(value="0.0")
+        self.dur_error = tk.StringVar(value="0")
         self.run_date = tk.StringVar(
             value=now.strftime("%Y-%m-%d"),
         )
@@ -168,6 +179,14 @@ class FITGeneratorGUI:
         style.configure("TButton", font=("Microsoft YaHei UI", 10))
 
     def _on_mousewheel(self, event):
+        # Windows 可能把弹出列表外的滚轮事件送到主窗口。
+        # 下拉列表展开期间锁住页面，避免列表与选择框错位。
+        combo = getattr(self, "playground_combo", None)
+        if combo is not None and combo.instate(["pressed"]):
+            return "break"
+        # 这些控件自行处理滚轮，不能同时带动外层页面。
+        if isinstance(event.widget, (ttk.Combobox, tk.Text, tk.Listbox)):
+            return
         self.canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
 
     def _build_ui(self):
@@ -247,7 +266,8 @@ class FITGeneratorGUI:
         )
         self.canvas.configure(yscrollcommand=scrollbar.set)
 
-        self.root.bind_all("<MouseWheel>", self._on_mousewheel)
+        # 只处理主窗口的事件；Combobox 的弹出列表属于独立窗口。
+        self.root.bind("<MouseWheel>", self._on_mousewheel, add="+")
 
         self.canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
@@ -335,6 +355,46 @@ class FITGeneratorGUI:
             basic_frame,
             textvariable=self.time_interval,
         )
+
+        # 每周跑的天数选择。
+        self.run_days_label = ttk.Label(
+            basic_frame,
+            text="每周跑的天数:",
+        )
+        self.run_days_frame = tk.Frame(basic_frame)
+        day_names = ["一", "二", "三", "四", "五", "六", "日"]
+        self.run_day_cbs = {}
+        for i, name in enumerate(day_names):
+            cb = ttk.Checkbutton(
+                self.run_days_frame,
+                text=name,
+                variable=self.run_days[i],
+            )
+            cb.pack(side=tk.LEFT, padx=2)
+            self.run_day_cbs[i] = cb
+
+        # 距离和时长的误差范围。
+        self.error_label = ttk.Label(
+            basic_frame,
+            text="距离误差 (±km):",
+        )
+        self.error_dist_entry = ttk.Entry(
+            basic_frame,
+            textvariable=self.dist_error,
+            width=8,
+        )
+        self.error_dur_label = ttk.Label(
+            basic_frame,
+            text="时长误差 (±min):",
+        )
+        self.error_dur_entry = ttk.Entry(
+            basic_frame,
+            textvariable=self.dur_error,
+            width=8,
+        )
+
+        self.file_count.trace_add("write", self._update_advanced_visibility)
+        self._update_advanced_visibility()
 
     def _build_time_frame(self, main_frame):
         time_frame = ttk.LabelFrame(
@@ -795,6 +855,7 @@ class FITGeneratorGUI:
             self.file_count_entry.grid_remove()
             self.interval_label.grid_remove()
             self.interval_entry.grid_remove()
+            self._update_advanced_visibility()
             self.calendar_task_frame.pack(
                 fill=tk.X,
                 pady=(0, 20),
@@ -811,6 +872,7 @@ class FITGeneratorGUI:
             row=3, column=1, sticky="ew", padx=15,
         )
         self._update_interval_visibility()
+        self._update_advanced_visibility()
 
     def _update_interval_visibility(self, *_):
         if self.batch_mode.get() != "interval":
@@ -835,6 +897,52 @@ class FITGeneratorGUI:
         else:
             self.interval_label.grid_remove()
             self.interval_entry.grid_remove()
+
+    def _update_advanced_visibility(self, *_):
+        """当生成份数 > 1 时显示批量生成高级选项。"""
+        if self.batch_mode.get() != "interval":
+            self.run_days_label.grid_remove()
+            self.run_days_frame.grid_remove()
+            self.error_label.grid_remove()
+            self.error_dist_entry.grid_remove()
+            self.error_dur_label.grid_remove()
+            self.error_dur_entry.grid_remove()
+            return
+
+        try:
+            count = int(self.file_count.get() or 0)
+        except ValueError:
+            count = 0
+
+        if count > 1:
+            # 每周跑的天数。
+            self.run_days_label.grid(
+                row=5, column=0, sticky=tk.W, pady=12,
+            )
+            self.run_days_frame.grid(
+                row=5, column=1, sticky="ew", padx=15, columnspan=2,
+            )
+            # 距离误差。
+            self.error_label.grid(
+                row=6, column=0, sticky=tk.W, pady=12,
+            )
+            self.error_dist_entry.grid(
+                row=6, column=1, sticky="w", padx=15,
+            )
+            # 时长误差。
+            self.error_dur_label.grid(
+                row=7, column=0, sticky=tk.W, pady=12,
+            )
+            self.error_dur_entry.grid(
+                row=7, column=1, sticky="w", padx=15,
+            )
+        else:
+            self.run_days_label.grid_remove()
+            self.run_days_frame.grid_remove()
+            self.error_label.grid_remove()
+            self.error_dist_entry.grid_remove()
+            self.error_dur_label.grid_remove()
+            self.error_dur_entry.grid_remove()
 
     def _update_pace(self, *_):
         try:
@@ -1371,23 +1479,7 @@ class FITGeneratorGUI:
 
     @staticmethod
     def _calculate_base_params(dist_km: float, dur_min: float) -> dict:
-        dur_sec = dur_min * 60
-        pace_sec_km = dur_sec / max(dist_km, 1e-6)
-
-        if pace_sec_km < 300:
-            cadence = random.randint(180, 185)
-            heart_rate = random.randint(160, 170)
-        elif pace_sec_km < 360:
-            cadence = random.randint(172, 178)
-            heart_rate = random.randint(145, 155)
-        elif pace_sec_km < 420:
-            cadence = random.randint(162, 168)
-            heart_rate = random.randint(130, 140)
-        else:
-            cadence = random.randint(150, 160)
-            heart_rate = random.randint(120, 130)
-
-        return {"hr_base": heart_rate, "cadence_base": cadence}
+        return calculate_base_params(dist_km, dur_min)
 
     @staticmethod
     def _track_point(
@@ -1398,75 +1490,10 @@ class FITGeneratorGUI:
         seed: int,
         playground_angle_deg: float,
     ):
-        # 根据真实跑步轨迹，让直道更稳、弯道更飘，并加入低频漂移。
-        point_seed = seed + int(progress * 1000000)
-        rng = random.Random(point_seed)
-
-        theta = math.radians(-playground_angle_deg)
-        current_lap = progress * total_laps
-        lap_progress = current_lap % 1
-        segment = int(lap_progress * 4)
-        segment_progress = (lap_progress * 4) - segment
-
-        if segment == 0:
-            base_x = -TRACK_CURVE_RADIUS
-            base_y = -TRACK_STRAIGHT_LENGTH / 2
-            base_y += TRACK_STRAIGHT_LENGTH * segment_progress
-        elif segment == 1:
-            angle = math.pi * (1 - segment_progress)
-            base_x = TRACK_CURVE_RADIUS * math.cos(angle)
-            base_y = TRACK_STRAIGHT_LENGTH / 2
-            base_y += TRACK_CURVE_RADIUS * math.sin(angle)
-        elif segment == 2:
-            base_x = TRACK_CURVE_RADIUS
-            base_y = TRACK_STRAIGHT_LENGTH / 2
-            base_y -= TRACK_STRAIGHT_LENGTH * segment_progress
-        else:
-            angle = math.pi * segment_progress
-            base_x = TRACK_CURVE_RADIUS * math.cos(angle)
-            base_y = -TRACK_STRAIGHT_LENGTH / 2
-            base_y -= TRACK_CURVE_RADIUS * math.sin(angle)
-
-        drift_wave_1 = math.sin(current_lap * 0.8 + seed / 50.0)
-        drift_wave_2 = math.sin(current_lap * 2.5 + seed / 20.0)
-        lane_offset = 1.8 + drift_wave_1 * 1.5 + drift_wave_2 * 0.5
-        lane_offset = max(0.2, min(MAX_TRACK_WIDTH, lane_offset))
-
-        if segment == 0:
-            drift_dx = -lane_offset
-            drift_dy = 0.0
-        elif segment == 1:
-            angle = math.pi * (1 - segment_progress)
-            drift_dx = lane_offset * math.cos(angle)
-            drift_dy = lane_offset * math.sin(angle)
-        elif segment == 2:
-            drift_dx = lane_offset
-            drift_dy = 0.0
-        else:
-            angle = math.pi * segment_progress
-            drift_dx = lane_offset * math.cos(angle)
-            drift_dy = lane_offset * math.sin(angle)
-
-        noise_sigma = 0.25 if segment in (0, 2) else 0.6
-        gps_noise_x = rng.gauss(0, noise_sigma)
-        gps_noise_y = rng.gauss(0, noise_sigma)
-
-        global_drift_x = math.sin(current_lap * 0.2) * 1.5
-        global_drift_y = math.cos(current_lap * 0.2) * 1.5
-
-        final_x = base_x + drift_dx + gps_noise_x + global_drift_x
-        final_y = base_y + drift_dy + gps_noise_y + global_drift_y
-
-        x_rot = final_x * math.cos(theta) - final_y * math.sin(theta)
-        y_rot = final_x * math.sin(theta) + final_y * math.cos(theta)
-
-        lat = center_lat + (y_rot / EARTH_METERS_PER_DEGREE)
-        lon_scale = EARTH_METERS_PER_DEGREE * max(
-            math.cos(math.radians(center_lat)),
-            1e-6,
+        return track_point(
+            progress, total_laps, center_lat, center_lon,
+            seed, playground_angle_deg,
         )
-        lon = center_lon + (x_rot / lon_scale)
-        return lat, lon
 
     """生成工作流程"""
 
@@ -1478,6 +1505,7 @@ class FITGeneratorGUI:
 
             if self.batch_mode.get() == "calendar":
                 tasks = self._build_calendar_tasks()
+                self._validate_tasks(tasks)
             else:
                 dist_km = float(self.run_distance.get())
                 dur_min = float(self.run_duration.get())
@@ -1493,46 +1521,75 @@ class FITGeneratorGUI:
                     "%Y-%m-%d %H:%M",
                 )
 
+                # 仅在批量模式调用 getter；隐藏字段中的残留内容不会影响
+                # 单条生成。
+                selected_days, dist_error, dur_error = (
+                    resolve_advanced_options(
+                        count,
+                        lambda: [
+                            i for i in range(7) if self.run_days[i].get()
+                        ],
+                        self.dist_error.get,
+                        self.dur_error.get,
+                    )
+                )
+
+                if dist_km <= 0 or dur_min <= 0:
+                    raise ValueError("距离和时长必须大于 0")
                 if count <= 0:
                     raise ValueError("生成份数必须大于 0")
                 if interval_hours < 0:
                     raise ValueError("生成间隔不能为负数")
-
-                tasks = self._build_interval_tasks(
-                    dist_km=dist_km,
-                    dur_min=dur_min,
-                    count=count,
-                    interval_hours=interval_hours,
-                    start_dt=start_dt,
-                    lat=lat,
-                    lon=lon,
-                    playground_angle=playground_angle,
-                )
-            self._validate_tasks(tasks)
         except ValueError as error:
             messagebox.showerror("输入错误", str(error))
             return
 
         os.makedirs(out_dir, exist_ok=True)
-        base_params = self._calculate_base_params(
-            tasks[0].distance_km,
-            tasks[0].duration_min,
-        )
 
         self._set_button(False, "生成中...")
         self._set_progress(0)
-        self.log(
-            "基准参数: "
-            f"心率~{base_params['hr_base']} | "
-            f"步频~{base_params['cadence_base']}"
-        )
+
+        if self.batch_mode.get() == "calendar":
+            self.log(f"日历任务: 共生成 {len(tasks)} 份数据")
+            generation_thread = threading.Thread(
+                target=self._run_calendar_tasks,
+                daemon=True,
+                args=(
+                    tasks,
+                    out_dir,
+                ),
+            )
+            generation_thread.start()
+            return
+
+        if selected_days:
+            day_names = ["一", "二", "三", "四", "五", "六", "日"]
+            days_str = " ".join(day_names[d] for d in selected_days)
+            self.log(
+                f"每周跑 {len(selected_days)} 天 ({days_str})，"
+                f"共生成 {count} 份数据"
+            )
+        if dist_error > 0 or dur_error > 0:
+            self.log(
+                f"误差范围: 距离±{dist_error}km, 时长±{dur_error}min"
+            )
 
         generation_thread = threading.Thread(
             target=self._run_task,
             daemon=True,
             args=(
-                tasks,
+                dist_km,
+                dur_min,
+                count,
+                interval_hours,
+                start_dt,
+                lat,
+                lon,
+                playground_angle,
                 out_dir,
+                selected_days,
+                dist_error,
+                dur_error,
             ),
         )
         generation_thread.start()
@@ -1564,7 +1621,7 @@ class FITGeneratorGUI:
                     playground_angle=playground_angle,
                     playground_label=playground_label,
                 )
-        )
+            )
         return tasks
 
     def _build_calendar_tasks(self) -> List[GenerationTask]:
@@ -1657,7 +1714,87 @@ class FITGeneratorGUI:
                     f"{next_task.index + 1} 时间重叠"
                 )
 
-    def _run_task(self, tasks, out_dir):
+    def _run_task(
+        self,
+        dist_km,
+        dur_min,
+        count,
+        interval_hours,
+        start_dt,
+        lat,
+        lon,
+        playground_angle,
+        out_dir,
+        selected_days,
+        dist_error,
+        dur_error,
+    ):
+        # 如果用户选择了每周跑的天数，则首条记录也需对齐到选中日期。
+        use_day_schedule = len(selected_days) > 0
+
+        try:
+            current_start_dt = start_dt
+            if use_day_schedule:
+                current_start_dt = next_run_date(
+                    current_start_dt, selected_days
+                )
+
+            # 旧版本会为整批文件只计算一次参数。零误差时继续复用该
+            # 参数；启用误差后才为每条记录按实际距离/时长重新计算。
+            batch_base_params = None
+            if dist_error == 0 and dur_error == 0:
+                batch_base_params = self._calculate_base_params(
+                    dist_km, dur_min
+                )
+
+            for index in range(count):
+                actual_dist, actual_dur, base_params = prepare_run_variant(
+                    dist_km,
+                    dur_min,
+                    dist_error,
+                    dur_error,
+                    batch_base_params,
+                )
+
+                start_text = current_start_dt.strftime("%m-%d %H:%M")
+                self._ui(
+                    self.log,
+                    f"正在生成第 {index + 1}/{count} 个文件 "
+                    f"(开始时间: {start_text}, "
+                    f"距离: {actual_dist:.2f}km, "
+                    f"时长: {actual_dur:.0f}min)...",
+                )
+                self._generate_fit_file(
+                    index=index,
+                    dist_km=actual_dist,
+                    dur_min=actual_dur,
+                    start_time=current_start_dt,
+                    lat_center=lat,
+                    lon_center=lon,
+                    playground_angle=playground_angle,
+                    out_dir=out_dir,
+                    params=base_params,
+                )
+                self._ui(self._set_progress, ((index + 1) / count) * 100)
+
+                # 计算下一条记录的起始时间。
+                current_start_dt = advance_run_date(
+                    current_start_dt,
+                    selected_days,
+                    interval_hours,
+                )
+
+            self._ui(messagebox.showinfo, "成功", f"生成完毕！\n路径: {out_dir}")
+            self._ui(self.log, "所有任务完成。")
+        # 后台线程需要兜底，确保异常后按钮和进度条状态能恢复。
+        except Exception as error:
+            self._ui(self.log, f"错误: {error}")
+            self._ui(messagebox.showerror, "错误", str(error))
+        finally:
+            self._ui(self._set_button, True, "生成 FIT 运动数据")
+            self._ui(self._set_progress, 0)
+
+    def _run_calendar_tasks(self, tasks, out_dir):
         current_task = None
         try:
             total = len(tasks)
@@ -1674,7 +1811,13 @@ class FITGeneratorGUI:
                     f"(任务 {task.index + 1}, 开始时间: {start_text})...",
                 )
                 filename = self._generate_fit_file(
-                    task=task,
+                    index=task.index,
+                    dist_km=task.distance_km,
+                    dur_min=task.duration_min,
+                    start_time=task.start_time,
+                    lat_center=task.latitude,
+                    lon_center=task.longitude,
+                    playground_angle=task.playground_angle,
                     out_dir=out_dir,
                     params=base_params,
                 )
@@ -1701,13 +1844,19 @@ class FITGeneratorGUI:
 
     def _generate_fit_file(
         self,
-        task,
+        index,
+        dist_km,
+        dur_min,
+        start_time,
+        lat_center,
+        lon_center,
+        playground_angle,
         out_dir,
         params,
     ):
-        this_dur_sec = int(task.duration_min * 60)
-        this_dist_m = task.distance_km * 1000
-        start_ts = int(task.start_time.timestamp() * 1000)
+        this_dur_sec = int(dur_min * 60)
+        this_dist_m = dist_km * 1000
+        start_ts = int(start_time.timestamp() * 1000)
 
         builder = FitFileBuilder(auto_define=True, min_string_size=50)
 
@@ -1744,10 +1893,10 @@ class FITGeneratorGUI:
             lat, lon = self._track_point(
                 progress,
                 laps,
-                task.latitude,
-                task.longitude,
+                lat_center,
+                lon_center,
                 seed,
-                task.playground_angle,
+                playground_angle,
             )
 
             avg_speed = this_dist_m / max(this_dur_sec, 1)
@@ -1811,7 +1960,7 @@ class FITGeneratorGUI:
         avg_power = int(sum_power / num_points)
         avg_stride = int(sum_stride / num_points)
         avg_gct = int(sum_gct / num_points)
-        total_calories = int(task.distance_km * 70 * 1.036)
+        total_calories = int(dist_km * 70 * 1.036)
 
         # FIT 中的循环数按 strides 记录，因此由步数折半得到。
         total_cycles = int((avg_cadence / 2) * (this_dur_sec / 60))
@@ -1866,7 +2015,7 @@ class FITGeneratorGUI:
         fit_file = builder.build()
         filename = os.path.join(
             out_dir,
-            f"keep_fit_{task.index}_{int(start_ts / 1000)}.fit",
+            f"keep_fit_{index}_{int(start_ts / 1000)}.fit",
         )
         fit_file.to_file(filename)
         return filename
