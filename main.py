@@ -1538,6 +1538,8 @@ class FITGeneratorGUI:
                     raise ValueError("距离和时长必须大于 0")
                 if count <= 0:
                     raise ValueError("生成份数必须大于 0")
+                if not math.isfinite(interval_hours):
+                    raise ValueError("生成间隔必须是有限数")
                 if interval_hours < 0:
                     raise ValueError("生成间隔不能为负数")
         except ValueError as error:
