@@ -5,7 +5,9 @@
 远程拉取优先级：Gitee > GitHub。
 """
 
+import http.client
 import json
+import math
 import os
 import urllib.error
 import urllib.request
@@ -65,21 +67,20 @@ class PlaygroundRepository:
         Returns:
             拉取成功时返回操场列表；失败时抛出异常。
         """
-        raw = self._fetch_remote()
-        parsed = json.loads(raw)
-        playgrounds = parsed.get("playgrounds", [])
+        parsed = self._fetch_remote()
+        playgrounds = parsed["playgrounds"]
         self._save_cache(parsed)
         return playgrounds
 
     # ---- 私有方法 ----
 
     def _fetch_remote(self):
-        """依次尝试各远程源，返回第一个成功的响应文本。
+        """依次尝试各远程源，返回第一个通过内容校验的数据。
 
         Raises:
             ConnectionError: 所有远程源均不可用。
         """
-        last_error = None
+        errors = []
         for url in REMOTE_SOURCES:
             try:
                 req = urllib.request.Request(
@@ -90,18 +91,50 @@ class PlaygroundRepository:
                     req,
                     timeout=REQUEST_TIMEOUT,
                 ) as resp:
-                    return resp.read().decode("utf-8")
+                    raw = resp.read().decode("utf-8-sig")
+                # HTTP 成功不代表内容有效，例如登录页或损坏的 JSON。
+                # 解析和校验必须在循环内，失败后才能继续尝试备用源。
+                return self._parse_remote_data(raw)
             except (
                 urllib.error.URLError,
-                urllib.error.HTTPError,
                 OSError,
+                http.client.HTTPException,
+                ValueError,
             ) as err:
-                last_error = err
+                errors.append(f"{url}: {err}")
                 continue
 
         raise ConnectionError(
-            f"所有远程数据源均不可用: {last_error}"
+            "所有远程数据源均不可用: " + "; ".join(errors)
         )
+
+    @staticmethod
+    def _parse_remote_data(raw):
+        """拒绝无法供界面使用的数据，避免污染本地缓存。"""
+        parsed = json.loads(raw)
+        if not isinstance(parsed, dict):
+            raise ValueError("操场数据必须是 JSON 对象")
+        playgrounds = parsed.get("playgrounds")
+        if not isinstance(playgrounds, list) or not playgrounds:
+            raise ValueError("操场列表缺失或为空")
+        for pg in playgrounds:
+            if not isinstance(pg, dict):
+                raise ValueError("操场记录必须是 JSON 对象")
+            for key in ("school", "campus", "name"):
+                if not isinstance(pg.get(key), str) or not pg[key].strip():
+                    raise ValueError(f"操场记录缺少有效的 {key}")
+            for key, limit in (
+                ("latitude", 90), ("longitude", 180), ("angle", None),
+            ):
+                value = pg.get(key)
+                if (
+                    isinstance(value, bool)
+                    or not isinstance(value, (int, float))
+                    or (isinstance(value, float) and not math.isfinite(value))
+                    or (limit is not None and abs(value) > limit)
+                ):
+                    raise ValueError(f"操场记录的 {key} 无效")
+        return parsed
 
     def _save_cache(self, data):
         """将完整数据结构写入本地缓存文件。"""

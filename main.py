@@ -139,6 +139,9 @@ class FITGeneratorGUI:
         style.configure("TButton", font=("Microsoft YaHei UI", 10))
 
     def _on_mousewheel(self, event):
+        # 这些控件自行处理滚轮，不能同时带动外层页面。
+        if isinstance(event.widget, (ttk.Combobox, tk.Text, tk.Listbox)):
+            return
         self.canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
 
     def _build_ui(self):
@@ -205,7 +208,8 @@ class FITGeneratorGUI:
         )
         self.canvas.configure(yscrollcommand=scrollbar.set)
 
-        self.root.bind_all("<MouseWheel>", self._on_mousewheel)
+        # 只处理主窗口的事件；Combobox 的弹出列表属于独立窗口。
+        self.root.bind("<MouseWheel>", self._on_mousewheel, add="+")
 
         self.canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
