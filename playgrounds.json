@@ -56,6 +56,14 @@
             "latitude": 28.1641274,
             "longitude": 112.9332707,
             "angle": 177.17
+        },
+        {
+            "school": "南通理工学院",
+            "campus": "海安校区",
+            "name": "田径场",
+            "latitude": 32.5115639,
+            "longitude": 120.5471972,
+            "angle": 172.7
         }
     ]
 }
