@@ -16,6 +16,7 @@ class TestMousewheel(unittest.TestCase):
         self.gui.root = self.root
         frame = self.gui._build_scroll_container()
         self.combo = ttk.Combobox(frame, values=[str(i) for i in range(40)])
+        self.gui.playground_combo = self.combo
         self.combo.pack()
         self.combo.current(0)
         self.text = tk.Text(frame, height=3)
@@ -66,6 +67,21 @@ class TestMousewheel(unittest.TestCase):
         self.root.update()
         self.assertEqual(self.gui.canvas.yview(), before_page)
         self.assertGreater(self.text.yview()[0], before_text[0])
+
+    def test_open_dropdown_blocks_wheel_received_by_main_window(self):
+        self.root.tk.call("ttk::combobox::Post", self.combo)
+        self.root.update()
+        self.assertTrue(self.combo.instate(["pressed"]))
+        before_page = self.gui.canvas.yview()
+        for widget in (self.body, self.gui.canvas, self.root):
+            with self.subTest(widget=str(widget)):
+                widget.event_generate("<MouseWheel>", delta=-120)
+                self.root.update()
+                self.assertEqual(self.gui.canvas.yview(), before_page)
+        self.close_popup()
+        self.body.event_generate("<MouseWheel>", delta=-120)
+        self.root.update()
+        self.assertGreater(self.gui.canvas.yview()[0], before_page[0])
 
 
 if __name__ == "__main__":

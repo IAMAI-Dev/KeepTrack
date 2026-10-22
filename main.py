@@ -40,7 +40,7 @@ from fit_tool.profile.profile_type import (
     SubSport,
 )
 
-VERSION = "1.1.0"
+VERSION = "1.1.1"
 
 
 class FITGeneratorGUI:
@@ -139,6 +139,11 @@ class FITGeneratorGUI:
         style.configure("TButton", font=("Microsoft YaHei UI", 10))
 
     def _on_mousewheel(self, event):
+        # Windows 可能把弹出列表外的滚轮事件送到主窗口。
+        # 下拉列表展开期间锁住页面，避免列表与选择框错位。
+        combo = getattr(self, "playground_combo", None)
+        if combo is not None and combo.instate(["pressed"]):
+            return "break"
         # 这些控件自行处理滚轮，不能同时带动外层页面。
         if isinstance(event.widget, (ttk.Combobox, tk.Text, tk.Listbox)):
             return
