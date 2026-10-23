@@ -1135,16 +1135,26 @@ class FITGeneratorGUI:
             f"当前任务: {selected_date.strftime('%Y-%m-%d')}"
         )
         self.task_edit_time.set(values["time"].strftime("%H:%M"))
-        self.task_edit_distance.set(f"{values['distance_km']:g}")
-        self.task_edit_duration.set(f"{values['duration_min']:g}")
+        self.task_edit_distance.set(str(values["distance_km"]))
+        self.task_edit_duration.set(str(values["duration_min"]))
         self.task_edit_playground.set(values["playground_label"])
-        self.task_edit_lat.set(f"{values['latitude']:g}")
-        self.task_edit_lon.set(f"{values['longitude']:g}")
-        self.task_edit_angle.set(f"{values['playground_angle']:g}")
+        self.task_edit_lat.set(str(values["latitude"]))
+        self.task_edit_lon.set(str(values["longitude"]))
+        self.task_edit_angle.set(str(values["playground_angle"]))
 
     def _clear_task_editor(self):
         self._editing_task_date = None
         self.task_edit_status.set("未选择任务")
+        for field in (
+            self.task_edit_time,
+            self.task_edit_distance,
+            self.task_edit_duration,
+            self.task_edit_playground,
+            self.task_edit_lat,
+            self.task_edit_lon,
+            self.task_edit_angle,
+        ):
+            field.set("")
 
     def _remove_selected_calendar_tasks(self):
         selected_items = self.task_tree.selection()
@@ -1221,6 +1231,10 @@ class FITGeneratorGUI:
         self._apply_task_edit_to_dates(sorted(self._selected_dates))
 
     def _apply_task_edit_to_dates(self, target_dates):
+        if self._editing_task_date not in self._selected_dates:
+            messagebox.showwarning("提示", "请先选择一个任务作为参数来源。")
+            return
+
         fields = self._get_apply_fields()
         if not fields:
             messagebox.showwarning("提示", "请至少选择一个应用字段。")
