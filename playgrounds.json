@@ -64,6 +64,14 @@
             "latitude": 32.5115639,
             "longitude": 120.5471972,
             "angle": 172.7
+        },
+        {
+            "school": "大连民族大学",
+            "campus": "金石滩校区",
+            "name": "田径场",
+            "latitude": 39.0840278,
+            "longitude": 121.9786820,
+            "angle": 347.17
         }
     ]
 }
